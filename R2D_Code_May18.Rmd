@@ -1,0 +1,1581 @@
+---
+title: "Two-Dimensional Rotation Ability Scale Development"
+author: "Kendall Mather and David Condon"
+header-includes:
+  - \usepackage{float}
+  - \floatplacement{figure}{H}
+  - \usepackage{caption}
+  - \captionsetup[figure]{labelformat=empty}  
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	fig.pos = "H",
+	message = FALSE,
+	warning = FALSE
+)
+def.chunk.hook  <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk = function(x, options) {
+  x <- def.chunk.hook(x, options)
+  paste0("\n \\", "scriptsize","\n\n", x, "\n\n \\normalsize")
+})
+```
+
+\newpage
+
+# Loading packages and data 
+
+The dataset ("ICARdata") contains IRT scale scores for the 27 traits of the SAPA Personality Inventory (SPI) and cognitive ability scale scores based on the International Cognitive Ability Resource (ICAR), which includes measures of 3D rotation, verbal reasoning, associative ability, propositional reasoning, matrix reasoning, and letter-number series problem-solving. In addition, sum scores for the Big Five personality traits were generated using the SPI items. 
+
+```{r}
+library(psych)
+library(tidyverse)
+library(here)
+library(rio)
+library(mirt)
+library(latticeExtra)
+library(knitr)
+library(kableExtra)
+library(flextable)
+
+options(scipen = 999)
+
+# Loading data with IRT scores for R2D
+#load("~/Desktop/Projects/2D_Rotation/R2Ddata07feb2017thru26feb2023.rdata")
+load("~/Desktop/Projects/2D_Rotation/ICARdata_06March.rdata")
+
+
+```
+
+
+# Participants
+
+First, participants are excluded from analyses if they are under the age of 14 or if they did not report speaking English at least "Well" (i.e., they selected "Not Well" or "Not at all, need translation").  
+  
+<br>
+
+<br>
+
+```{r}
+ICARdata <- ICARdata %>%
+  # Filter for participants who are at least 14
+  filter(age>13) %>% 
+  # Filter for english fluency
+  filter(english=="Well" | english=="VeryWellFluentNative") 
+
+
+totalN <- nrow(ICARdata)
+```
+
+
+<br>  
+
+<br>  
+
+This initial sample included a total of `r prettyNum(totalN, big.mark=",", scientific=FALSE)` participants. Below, the subset of participants who responded to at least 1 2D rotation item is identified.
+
+<br>  
+
+<br> 
+
+
+```{r}
+ICARdata <- ICARdata %>%
+  mutate(R2Dcount = rowSums(!is.na(.[86:389]))) %>% # Count the number of non NAs across the R2D items
+  filter(R2Dcount > 0) # At least 1 non NA response
+```
+
+
+```{r, echo=FALSE}
+##### Sample size and number of countries
+totalN <- nrow(ICARdata)
+countryCount <- table(ICARdata$country)
+ncountry <- sum(countryCount != 0)
+percentUSA <- round((length(which(ICARdata$country == "USA")))/
+              nrow(ICARdata),4)*100
+##### Ethnicity
+ethnic <- data.frame(table(ICARdata$ethnic))
+colnames(ethnic) <- c("Ethnicity/Race", "Participants")
+##### Education
+education <- data.frame(table(ICARdata$education))
+colnames(education) <- c("Educational Attainment", "Participants")
+##### Occupations
+jobstatus <- data.frame(table(ICARdata$jobstatus))
+colnames(jobstatus) <- c("Job Status", "Participants")
+occupation <- table(ICARdata$occupation)
+occupations <- data.frame(sort(occupation, decreasing = TRUE))
+colnames(occupations) <- c("Jobs", "Participants")
+nocc <- sum(occupation != 0)
+pocc <- sum(table(ICARdata$occupation))
+##### Age
+age <- describe(ICARdata$age)
+##### Sex
+sex_table <- ICARdata %>% 
+  dplyr::group_by(sex) %>%
+  dplyr::summarize(count = dplyr::n()) %>%
+  dplyr::mutate(percent = 100*count/sum(count))
+percentFemale <- round(sex_table[2,3],2)
+##### English fluency
+fluency <- data.frame(table(ICARdata$english))
+colnames(fluency) <- c("English fluency", "Participants")
+```
+
+The final sample included a total of `r prettyNum(totalN, big.mark=",", scientific=FALSE)` participants (`r percentFemale` % female) who responded to items on the SAPA project website (www.sapa-project.org) in exchange for information about their personalities. The sample ranged in age from `r round(age$min, 1)` to `r round(age$max,1)` years, with a mean of `r round(age$mean,1)` (*sd* = `r round(age$sd,1)`). A total of `r ncountry` nation states were included (`r percentUSA`% U.S.). Information on participant employment status, educational attainment, ethnicity (for U.S. participants only), and English fluency is shown in the tables below. Note that responses to these items were not required so the total number of participants included in these tables is less than the complete sample used for these analyses. 
+
+
+```{r, echo=FALSE}
+education$`Educational Attainment` <- c("Less than 12 years",
+                          "High school graduate",
+                         "Currently in college/university",
+                         "Some college/university, but did not graduate",
+                         "Associate degree", "College/university degree",
+                         "Currently in graduate or professional school",
+                         "Graduate or professional school degree")
+
+education %>%
+  mutate(Percentage = 
+  paste(round(Participants/sum(education$Participants),3)*100, "%", sep="")) %>%
+  kable(caption = "Educational attainment",
+  digits=2, format.args = list(big.mark = ",")) %>%
+  kableExtra::kable_styling(latex_options = c("HOLD_position")) %>%
+  kableExtra::kable_styling(font_size = 10,
+  latex_options = c("repeat_header")) %>%
+  kableExtra::kable_classic(full_width=F)
+
+ethnic$`Ethnicity/Race` <- c("African American", "Chinese", "Japanese",
+                             "Korean", "Filipino", "Indian", "Other Asian",
+                             "Other Hispanic", "Mexican American",
+                             "Puerto Rican", "Native American",
+                             "Other Pacific Islander", "White", "Other",
+                             "Alaskan Native", "Cuban American",
+                             "Native Hawaiian", "Two or more ethnicities",
+                             "None of these")
+
+ethnic %>%
+  arrange(desc(Participants)) %>%
+  mutate(Percentage = 
+  paste(round(Participants/sum(ethnic$Participants),3)*100, "%", sep="")) %>%
+  kable(caption = "Ethnicity (U.S. participants only)",
+  digits=2, format.args = list(big.mark = ",")) %>%
+  kableExtra::kable_styling(latex_options = c("HOLD_position")) %>%
+  kableExtra::kable_styling(font_size = 10,
+  latex_options = c("repeat_header")) %>%
+  kableExtra::kable_classic(full_width=F)
+
+jobstatus$`Job Status` <- c("Currently a student", "Not employed",
+                            "Not employed, seeking work", "Homemaker",
+                            "Employed", "Retired")
+
+jobstatus %>%
+arrange(desc(Participants)) %>%
+  mutate(Percentage = 
+  paste(round(Participants/sum(jobstatus$Participants),3)*100, "%", sep="")) %>%
+  kable(caption = "Employment status",
+  digits=2, format.args = list(big.mark = ",")) %>%
+  kableExtra::kable_styling(latex_options = c("HOLD_position")) %>%
+  kableExtra::kable_styling(font_size = 10,
+  latex_options = c("repeat_header")) %>%
+  kableExtra::kable_classic(full_width=F)
+
+
+fluency$`English fluency` <- c("Need Translation", "Not Well", 
+                               "Well", "Very well/fluent")
+
+fluency %>%
+arrange(desc(Participants)) %>%
+  mutate(Percentage = 
+  paste(round(Participants/sum(fluency$Participants),3)*100, "%", sep="")) %>%
+  kable(caption = "English fluency",
+  digits=2, format.args = list(big.mark = ",")) %>%
+  kableExtra::kable_styling(latex_options = c("HOLD_position")) %>%
+  kableExtra::kable_styling(font_size = 10,
+  latex_options = c("repeat_header")) %>%
+  kableExtra::kable_classic(full_width=F)
+
+```
+
+**Descriptive statistics for all 2D rotation items** <br>
+
+
+```{r}
+# Subsetting the data for just the 2D rotation items
+Rot2D <- subset(ICARdata, select = c(q_16001:q_16304))
+
+# number of pairwise admins for all 304 item pairs
+R2D_pairwise_counts <- pairwiseCount(Rot2D, diagonal=FALSE) 
+pwise_counts_table_unfiltered <- psych::describe(R2D_pairwise_counts)
+
+R2D_pairwise_counts_summary <- as.vector(R2D_pairwise_counts
+                              [lower.tri(R2D_pairwise_counts)])
+
+psych::describe(R2D_pairwise_counts_summary)
+
+```
+
+# Identifying 2D rotation items with enough pairwise administrations
+
+There are a total of 304 algorithmically generated 2D rotation items. This large pool of initial items was generated to ensure that there would be a final subset of high-quality items that cover a broad range of difficulty (i.e., enough items that are relatively easy or difficult, which are needed to distinguish between participants at higher levels of 2D rotation ability and at lower levels of 2D rotation ability).  
+
+<br>
+
+<br>
+
+
+```{r, echo=FALSE}
+
+# column sums to get total number of total administrations
+admins <- as.data.frame(colSums(!is.na(Rot2D))) %>%
+          dplyr::rename(admins = 1) %>%
+          dplyr::arrange(desc(admins))
+
+admins_remaining <- admins %>% 
+  filter(admins<10000) %>% 
+  summarize(mean_admins=mean(admins),
+            min_admins=min(admins),
+            max_admins=max(admins),
+            med_admins= median(admins),
+            sd= sd(admins))
+
+admins_70 <- admins %>% 
+  filter(admins>10000) %>% 
+  summarize(mean_admins=mean(admins),
+            min_admins=min(admins),
+            max_admins=max(admins),
+            med_admins= median(admins),
+            sd= sd(admins))
+
+
+```
+
+
+Once developed, all 304 items were administered a relatively small number of times (*m* = `r round(admins_remaining$mean_admins,2)`); *Mdn* = `r admins_remaining$med_admins`; minimum = `r admins_remaining$min_admins`) on the SAPA Project website in order to identify mean estimates of their difficulty based on the proportion of correct responses. In this way, a subset of the initial 304 items was identified for further testing and validation. The items reported on in the current study (N = 70) were then subsequently administered at much higher rates until they reached a minimum of 500 pairwise administrations with one another (i.e., among the smaller 70-item set, not the complete pool of 304 items). The histogram below shows the number of administrations for all 304 items, with the 70 items that were selected for further development at the high end of the range (>20,000 administrations) and the remainder at the low end.  
+<br>
+
+<br>
+
+```{r}
+# column sums to get total number of total administrations
+admins <- as.data.frame(colSums(!is.na(Rot2D))) %>%
+          dplyr::rename(admins = 1) %>%
+          dplyr::arrange(desc(admins))
+
+```
+
+
+```{r, echo=FALSE}
+
+ggplot(admins, aes(x=admins)) + 
+  geom_histogram(color="black", fill="steelblue") +
+  ggtitle("Figure 1. Total number of administrations per item") +
+  xlab("Total number of admins") +
+  ylab("Number of items") +
+  annotate("text", x = 21000, y = 70, label = "Items with enough pairwise administrations", size = 2.2) +
+  theme_bw()
+
+
+```
+
+<br>
+
+Most items (N = `r admins %>% filter(admins<10000) %>% nrow()` out of 304) have not been administered frequently enough with each of the other items. We remove these items below and then re-evaluate the number of minimum pairwise administrations per item using the remaining 70 items. To be clear, the pairwise counts shown in table 5 are limited to these 70 items as a set.
+
+
+```{r}
+# filtering dataframe of items 
+admin_rows <- admins %>% row.names()
+R2D_item_nums <- admin_rows[1:70] # items with enough overall administrations
+# Sub-setting the data to get only the items with enough admins
+Rot2D_subset <- subset(Rot2D, select = c(R2D_item_nums))
+# Getting pairwise administrations for these items 
+R2D_pairwise_counts_filter <- pairwiseCount(Rot2D_subset, diagonal = FALSE)
+pwise_counts_table_filter <- psych::describe(R2D_pairwise_counts_filter)
+```
+
+\newpage
+
+```{r, echo=FALSE}
+
+pwise_counts_table_filter %>%
+  arrange(desc(min)) %>%
+  select(-kurtosis, -trimmed, -mad, -skew, -se, -vars, -n) %>%
+  kable(longtable = T, caption = "Pairwise admins for subset of 70 items",
+  caption.short = "70 remaining items",
+  digits=2, format.args = list(big.mark = ",")) %>%
+  kableExtra::kable_styling(latex_options = c("repeat_header",
+ "HOLD_position"), font_size = 9) %>%
+  kableExtra::kable_classic(full_width=F)
+
+```
+
+```{r}
+R2D_pairwise_counts_filter_summary <- as.vector(R2D_pairwise_counts_filter
+                                      [lower.tri(R2D_pairwise_counts_filter)])
+
+psych::describe(R2D_pairwise_counts_filter_summary)
+
+```
+
+<br>  
+
+
+```{r, echo=FALSE}
+hist(R2D_pairwise_counts_filter,
+     main = "Figure 2. pairwise administrations across item pairs",
+     xlab = "Number of pairwise admins", col = "steelblue", breaks = 50)
+```
+<br>
+
+
+# Factor structure and dimensionality 
+
+The following code was used to examine the factor structure and dimensionality of the 2D rotation items. Unidimensionality is assessed using the omega hierarchical ($\omega_{h}$) coefficient, obtained using the `omega()' function from the psych package (Revelle, 2022). $\alpha$ and $\omega_{t}$ are used to evaluate internal consistency.  
+
+
+```{r}
+# Correlation matrix of subset of items
+cor_matrix <- cor(Rot2D_subset, use = "pairwise")
+cor_matrix_smoothed <- cor.smooth(cor_matrix)
+
+```
+
+The following images show the inter-item correlations arranged by general factor loading across factor solutions with 1 through 6 factors. Inspection of the plots suggests that there are up to four lower-order factors.
+
+```{r, echo=FALSE}
+# One factor
+R2D_fa <- fa.sort(fa(cor_matrix, nfactors = 1))
+rows_R2D <- rownames(R2D_fa$loadings)
+colnames(Rot2D_subset) <- reorder(colnames(Rot2D_subset),rows_R2D)
+cor_matrix_plot2 <- Rot2D_subset[, rows_R2D]
+
+cor_matrix_plot2 <- cor_matrix_plot2 %>%
+  cor(use = "pairwise") 
+
+plot1 <- ggcorrplot::ggcorrplot(cor_matrix_plot2, colors = c("#E46726", "white", "#6D9EC1")) +        theme(legend.position='none') + 
+        theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+        theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) + 
+        ggtitle("One factor")
+# Two factors
+R2D_fa <- fa.sort(fa(cor_matrix, nfactors = 2))
+rows_R2D <- rownames(R2D_fa$loadings)
+colnames(Rot2D_subset) <- reorder(colnames(Rot2D_subset),rows_R2D)
+cor_matrix_plot2 <- Rot2D_subset[, rows_R2D]
+
+cor_matrix_plot2 <- cor_matrix_plot2 %>%
+  cor(use = "pairwise") 
+      
+plot2 <- ggcorrplot::ggcorrplot(cor_matrix_plot2, colors = c("#E46726", "white", "#6D9EC1")) +        theme(legend.position='none') + 
+        theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+        theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) + 
+        ggtitle("Two factors")
+
+
+# Three factors
+R2D_fa <- fa.sort(fa(cor_matrix, nfactors = 3))
+rows_R2D <- rownames(R2D_fa$loadings)
+colnames(Rot2D_subset) <- reorder(colnames(Rot2D_subset),rows_R2D)
+cor_matrix_plot2 <- Rot2D_subset[, rows_R2D]
+
+cor_matrix_plot2 <- cor_matrix_plot2 %>%
+  cor(use = "pairwise") 
+      
+plot3 <- ggcorrplot::ggcorrplot(cor_matrix_plot2, colors = c("#E46726", "white", "#6D9EC1")) +        theme(legend.position='none') + 
+        theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+        theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) + 
+        ggtitle("Three factors")
+
+# Four factors
+R2D_fa <- fa.sort(fa(cor_matrix, nfactors = 4))
+rows_R2D <- rownames(R2D_fa$loadings)
+colnames(Rot2D_subset) <- reorder(colnames(Rot2D_subset),rows_R2D)
+cor_matrix_plot2 <- Rot2D_subset[, rows_R2D]
+
+cor_matrix_plot2 <- cor_matrix_plot2 %>%
+  cor(use = "pairwise") 
+      
+plot4 <- ggcorrplot::ggcorrplot(cor_matrix_plot2, colors = c("#E46726", "white", "#6D9EC1")) +        theme(legend.position='none') + 
+        theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+        theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) + 
+        ggtitle("Four factors")
+
+# Five factors
+R2D_fa <- fa.sort(fa(cor_matrix, nfactors = 5))
+rows_R2D <- rownames(R2D_fa$loadings)
+colnames(Rot2D_subset) <- reorder(colnames(Rot2D_subset),rows_R2D)
+cor_matrix_plot2 <- Rot2D_subset[, rows_R2D]
+
+cor_matrix_plot2 <- cor_matrix_plot2 %>%
+  cor(use = "pairwise") 
+      
+plot5 <- ggcorrplot::ggcorrplot(cor_matrix_plot2, colors = c("#E46726", "white", "#6D9EC1")) +        theme(legend.position='none') + 
+        theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+        theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) + 
+        ggtitle("Five factors")
+
+
+
+# Six factors
+R2D_fa <- fa.sort(fa(cor_matrix, nfactors = 6))
+rows_R2D <- rownames(R2D_fa$loadings)
+colnames(Rot2D_subset) <- reorder(colnames(Rot2D_subset),rows_R2D)
+cor_matrix_plot2 <- Rot2D_subset[, rows_R2D]
+
+cor_matrix_plot2 <- cor_matrix_plot2 %>%
+  cor(use = "pairwise") 
+      
+plot6 <- ggcorrplot::ggcorrplot(cor_matrix_plot2, colors = c("#E46726", "white", "#6D9EC1")) +        theme(legend.position='none') + 
+        theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+        theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) + 
+        ggtitle("Six factors")
+
+
+plot7 <- ggpubr::ggarrange(plot1, plot2, plot3, plot4, plot5, plot6, ncol=3, nrow=2)
+
+ggpubr::annotate_figure(plot7, 
+  top = ggpubr::text_grob("Figure 3. inter-item correlations for factor solutions with 1-6 factors",
+  color = "black", face = "bold", size = 14))
+
+
+```
+
+\newpage
+
+<br>
+
+Next, the omega function is run for the one factor and four factor solutions to determine general factor saturation, indicated by $\omega_{h}$ and internal consistency (indicated by $\omega_{t}$ and $\alpha$). <br>
+
+<br>
+
+<br>
+
+```{r}
+omega1 <- omega(cor_matrix_smoothed, plot = FALSE)
+omega4 <- omega(cor_matrix_smoothed, nfactors = 4, plot = FALSE)
+
+omega1$omega_h
+omega4$omega_h
+```
+
+<br>
+
+Omega hierarchical for the single-factor model ($\omega_{h}$ = `r round(omega1$omega_h,2)`) suggests poor fit. Based on the correlation plots above and the improvement in unidimensionality when extracting four lower-order factors ($\omega_{h}$ = `r round(omega4$omega_h,2)`), there appear to be several lower-order factors in the data. Table 6 shows the loadings of items by factor (see below for more description of the factor labels).
+
+
+```{r, echo=FALSE}
+efa <- fa(cor_matrix_smoothed, nfactors=4, rotate="oblimin")
+
+# Function for printing table with variance explained by each factor
+# from: https://www.anthonyschmidt.co/post/2020-09-27-efa-tables-in-r/
+flex <- function(data, title=NULL) {
+  # this grabs the data and converts it to a flextbale
+  flextable(data) %>%
+  # this makes the table fill the page width
+  set_table_properties(layout = "autofit", width = 1) %>%
+  # font size
+  fontsize(size=8, part="all") %>%
+    #this adds a ttitlecreates an automatic table number
+      set_caption(title, 
+                  autonum = officer::run_autonum(seq_id = "tab", 
+                                                 pre_label = "Table ", 
+                                                 post_label = "\n", 
+                                                 bkm = "anytable")) %>%
+  # font type
+  font(fontname="Times New Roman", part="all")
+}
+
+
+```
+
+```{r, echo=FALSE}
+
+# Function for printing factor loadings table
+fa_table <- function(x, cut) {
+  #get sorted loadings
+  loadings <- fa.sort(x)$loadings %>% round(2)
+  #supress loadings
+  loadings[loadings < cut] <- ""
+  #get additional info
+  add_info <- cbind(x$communalities, 
+                    x$uniquenesses,
+                    x$complexity) %>%
+    # make it a data frame
+    as.data.frame() %>%
+    # column names
+    rename("Communality" = V1,
+           "Uniqueness" = V2,
+           "Complexity" = V3) %>%
+    #get the item names from the vector
+    rownames_to_column("item")
+  #build table
+  loadings %>%
+    unclass() %>%
+    as.data.frame() %>%
+    rownames_to_column("item") %>%
+    left_join(add_info) %>%
+    mutate(across(where(is.numeric), round, 3))
+}
+
+# Printing table
+#fa_table(efa, .20) #%>%
+#  flex("A Pretty Factor Analysis Table") %>%
+#    width(width = .25, unit = "in") 
+
+
+fa_table(efa, .20) %>%
+  rename(Rotate_both = MR1,
+         Rotate_stimuli = MR2,
+         Rotate_answer = MR4,
+         Rotate_none = MR3) %>%
+  knitr::kable(caption="Factor loadings", longtable = T, digits=2, booktabs=TRUE) %>%
+  kableExtra::kable_styling(latex_options = c("repeat_header",
+ "HOLD_position"), font_size = 9) %>%
+  kableExtra::kable_classic(full_width=F)
+
+```
+
+
+<br>
+
+<br>
+
+These lower-order factors appear to reflect differences in the type of mental rotation demanded by the items. Specifically, whether items require mental rotation of the stimuli, the answer option, both, or neither (i.e., the item does not require any mental rotation and merely requires participants to identify a missing piece of the stimuli). These factors represent all possible combinations of mental rotation of the stimuli and/or the answer option. An example of each of these four item types is shown below: <br>
+
+
+<br>
+
+* **Factor 1**: Rotation of stimuli and of correct response option <br>
+
+<br>
+
+<br>
+
+
+![Figure 4. Example item for factor 1 ("rotate both")](R2Dfigures/fig16057.png){width=50%} 
+
+<br>
+
+<br>
+
+* **Factor 2**: No rotation of stimuli, but requires rotation of correct response option <br>
+
+<br>
+
+<br>
+
+![Figure 5. Example item for factor 2 ("rotate answer")](R2Dfigures/fig16235.png){width=50%} 
+
+<br>
+
+<br>
+
+* **Factor 3**: Rotation of stimuli, no rotation of correct response option (i.e., answer option fits in missing puzzle piece without rotation). <br>
+
+<br>
+
+<br>
+
+![Figure 6. Example item for factor 3 ("rotate stimuli")](R2Dfigures/fig16026.png){width=50%}
+
+<br>
+
+<br>
+
+* **Factor 4**: No rotation <br>
+
+<br>
+
+<br>
+
+![Figure 7. Example item for factor 4 ("rotate none")](R2Dfigures/fig16065.png){width=50%}
+
+<br>
+
+
+```{r, echo=FALSE}
+# alpha = .96, omega t = .97, omega h = .48
+omega_1_h <- round(omega1$omega_h,2) 
+omega_1_t <- round(omega1$omega.tot,2) 
+omega_1_a <- round(omega1$alpha,2) 
+
+# alpha = .96, omega t = .97, omega h = .65
+omega_4_h <- round(omega4$omega_h,2) 
+omega_4_t <- round(omega4$omega.tot,2) 
+omega_4_a <- round(omega4$alpha,2) 
+omega_4_cors <- round(omega4$stats$r.scores, 2)
+omega_4_loadings <- omega4$schmid$orthog
+
+# Sub-setting the data for unidimensional IRT scoring (remove items without rotation)
+Rot2D_filtered <- Rot2D_subset %>%
+  dplyr::select(-c("q_16009","q_16053", "q_16061", "q_16065", "q_16069",
+  "q_16105", "q_16125", "q_16193", "q_16232", "q_16265", "q_16281", "q_16285"))
+
+cor_matrix2 <- cor(Rot2D_filtered, use = "pairwise")
+cor_matrix_smoothed2 <- cor.smooth(cor_matrix2)
+
+omega_1_filtered <- omega(cor_matrix_smoothed2, plot = FALSE)
+omega_1_filtered_h <- round(omega_1_filtered$omega_h,2)
+```
+
+
+<br>
+
+
+Recall that omega hierarchical for the single-factor model suggests poor unidimensionality ($\omega_{h}$ = `r round(omega_1_h,2)`). When extracting four lower-order factors, unidimensionality improves ($\omega_{h}$ = `r round(omega_4_h,2)`), though it remains lower than is optimal for item response theory based scoring. 
+
+<br>
+
+<br>
+
+Items with primary loadings onto the fourth lower-order factor (example shown in figure 7) do not appear to require mental rotation. That is, participants do not need to rotate either the stimuli or the answer option to arrive at the correct answer and only need to be able to identify the puzzle piece that is missing from the stimuli (e.g., option "E" for the item in figure 7). We suspected that these items may be decreasing the unidimensionality of the scale--which is designed to measure mental rotation ability--and decided to remove these items and re-evaluate the factor structure of the items. After removing these 12 items, unidimensionality improved to an acceptable level ($\omega_{h}$ = `r round(omega_1_filtered_h,2)`). After establishing adequate unidimensionality, we proceeded with IRT scoring. <br>
+
+
+# IRT analyses of the items 
+
+
+First, IRT scores were generated for the general 2D rotation factor. All items from the pool were retained except for those loading onto the lower-order factor which did not require any mental rotation to solve. This left a total of 58 items. We also generate IRT scores for the four lower-order factors, including the ability to solve items that did not require rotation (i.e., the pattern-matching items). <br>
+
+## Item parameters for general factor
+
+Below, we remove items that do not require mental rotation and generate scores for general 2D rotation ability.
+
+```{r}
+# Subsetting the data for unidimensional IRT scoring (remove items without rotation)
+Rot2D_filtered <- Rot2D_subset %>%
+  dplyr::select(-c("q_16009","q_16053", "q_16061", "q_16065", "q_16069",
+  "q_16105", "q_16125", "q_16193", "q_16232", "q_16265", "q_16281", "q_16285"))
+
+dim(Rot2D_filtered) 
+
+```
+
+```{r, echo=FALSE}
+cor_matrix2 <- cor(Rot2D_filtered, use = "pairwise")
+cor_matrix_smoothed2 <- cor.smooth(cor_matrix2)
+omega_1_filtered <- omega(cor_matrix_smoothed2, plot = FALSE) 
+```
+
+```{r, message=FALSE, warning=FALSE, eval=FALSE}
+IRT_model_unidimensional <- mirt(Rot2D_filtered, 1, itemtype = "2PL",
+                            constrain = NULL)
+
+save(IRT_model_unidimensional, file = "IRT_model_unidimensional.rdata")
+```
+
+```{r, echo=FALSE}
+load("/Users/kmather3/Desktop/Projects/2D_Rotation/IRT_model_unidimensional.rdata")
+```
+
+```{r}
+# Item parameters for the general factor
+IRT_model_unidimensional_parameters <- coef(IRT_model_unidimensional,
+                                        IRTpars=TRUE, simplify = TRUE)
+
+R2Dparameters <- IRT_model_unidimensional_parameters$items[,1:2]
+R2Dparameters <- as.data.frame(R2Dparameters) %>%
+                 dplyr::mutate(item = rownames(.)) %>%
+                 relocate(item)
+```
+
+
+**Descriptive statistics for the item parameters:**
+```{r}
+# Item discrimination
+psych::describe(R2Dparameters$a)
+# Item difficulty
+psych::describe(R2Dparameters$b)
+```
+
+**Plotting item probability functions and test information function** <br>
+
+<br>
+
+
+```{r, echo=FALSE}
+plot(IRT_model_unidimensional, type = 'trace',
+     facet_items = FALSE, auto.key = FALSE, 
+     main="Figure 8. Item probability functions")
+
+plot(IRT_model_unidimensional, type = "infoSE", xlim = c(-4,4), 
+     main="Figure 9. Test Information and Standard Errors") 
+
+```
+
+One of the items is interfering with the overall test. This item (q_16104) has a very high discrimination value. It is shown below and highlighted in the table with IRT parameters for each item. Note that this is also the most difficult item in the set (lowest mean with a proportion of .12 for correct responses), and that it has a challenging distractor response option (see Figure 10).
+
+```{r, echo=FALSE}
+# Item means, sds, Ns, and IRT parameters
+Rot2D_filtered %>% 
+  map_df(~data.frame(
+  mean = round(mean(.x, na.rm = T),2), 
+  sd = round(sd(.x, na.rm = T),2),
+  N =  sum(!is.na(.x)))) %>%
+  mutate(item = colnames(Rot2D_filtered)) %>%
+  relocate(item) %>%
+  inner_join(R2Dparameters, by = "item") %>%
+  arrange(desc(a)) %>%
+  rename(discrimination = a) %>%
+  rename(difficulty = b) %>%
+  kable(caption = "Item descriptives and IRT parameters,
+  in descending order of item discrimination
+  (potentially problematic items highlighted)",
+  digits=2, format.args = list(big.mark = ",")) %>%
+  kableExtra::kable_styling(latex_options = c("HOLD_position")) %>%
+  kableExtra::kable_styling(font_size = 7,
+  latex_options = c("repeat_header")) %>%
+  kableExtra::kable_classic(full_width=F) %>%
+  row_spec(c(1), background = "yellow")
+
+```
+
+
+```{r, out.width="0.5\\linewidth", include=TRUE, fig.align="center", fig.cap=c("Figure 10. One item with an unusually high discrimination value"), echo=FALSE}
+
+knitr::include_graphics("./R2Dfigures/fig16104.png")
+```
+
+**Dropping item and re-running the analyses:** <br>
+
+Given the unusual difficulty of this item, we decided to drop it and re-run the analyses to see whether this improves the psychometric properties of the test overall. In fact, it does (see below), so the item has been permanently deprecated.  
+
+<br>
+
+```{r}
+# Dropping 16104
+Rot2D_filtered2 <- Rot2D_filtered %>% dplyr::select(-q_16104)
+
+```
+
+```{r, eval=FALSE}
+# Re-running the IRT model
+IRT_model_unidimensional2 <- mirt(Rot2D_filtered2, 1, itemtype = "2PL",
+                            constrain = NULL)
+
+save(IRT_model_unidimensional2, file = "IRT_model_unidimensional2.rdata")
+
+```
+
+
+```{r}
+
+load("/Users/kmather3/Desktop/Projects/2D_Rotation/IRT_model_unidimensional2.rdata")
+
+# Item parameters
+IRT_model_unidimensional_parameters2 <- coef(IRT_model_unidimensional2,
+                                        IRTpars=TRUE, simplify = TRUE)
+
+R2Dparameters2 <- IRT_model_unidimensional_parameters2$items[,1:2]
+R2Dparameters2 <- as.data.frame(R2Dparameters2) %>%
+                 dplyr::mutate(item = rownames(.)) %>%
+                 relocate(item)
+```
+
+**Plotting item probability functions and test information** <br>
+
+<br>
+
+
+```{r, echo=FALSE}
+plot(IRT_model_unidimensional2, type = 'trace',
+     facet_items = FALSE, auto.key = FALSE,
+     main="Figure 11. Item Probability Functions")
+plot(IRT_model_unidimensional2, type = "infoSE", xlim = c(-4,4),
+     main="Figure 12. Test Information and Standard Errors") 
+
+```
+<br>
+
+One additional item (shown in Figure 13) stood out for having a relatively high difficulty level. Similar to item 16104, which was dropped from the final scale, this item has a challenging distractor option. We decided to retain this item because analyses suggest that it does not interfere with the psychometric properties of the overall scale. <br>
+
+<br>
+
+
+```{r, out.width="0.5\\linewidth", include=TRUE, fig.align="center", fig.cap=c("Figure 13. One other item (item 16144) had a fairly high difficulty level and a similar but less challenging distractor option"), echo=FALSE}
+
+knitr::include_graphics("./R2Dfigures/fig16144.png")
+```
+
+
+```{r, echo=FALSE}
+# Item means, sds, Ns, and IRT parameters
+
+Rot2D_filtered2 %>% 
+  map_df(~data.frame(
+  mean = round(mean(.x, na.rm = T),2), 
+  sd = round(sd(.x, na.rm = T),2),
+  N =  sum(!is.na(.x)))) %>%
+  mutate(item = colnames(Rot2D_filtered2)) %>%
+  relocate(item) %>%
+  inner_join(R2Dparameters2, by = "item") %>%
+  arrange(desc(a)) %>%
+  rename(discrimination = a) %>%
+  rename(difficulty = b) %>%
+  kable(caption = "Item descriptives and IRT parameters,
+  in descending order of item discrimination",
+  digits=2, format.args = list(big.mark = ",")) %>%
+  kableExtra::kable_styling(latex_options = c("HOLD_position")) %>%
+  kableExtra::kable_styling(font_size = 9,
+  latex_options = c("repeat_header")) %>%
+  kableExtra::kable_classic(full_width=F) 
+
+```
+
+```{r}
+plot(IRT_model_unidimensional2, type = 'trace', facet_items = TRUE,
+     main="Figure 14. Item Probability Functions")
+```
+**Descriptive statistics for the item parameters:** <br>
+
+<br>
+
+
+```{r}
+# Item discrimination
+psych::describe(R2Dparameters2$a)
+# Item difficulty
+psych::describe(R2Dparameters2$b)
+```
+
+<br>
+
+## Lower-order factors
+
+
+When scoring the lower-order factors, the full set of items is used (i.e., items requiring no rotation are not removed because these items form one of the lower-order factors). Item labels are obtained from the omega function output, and then the unidimensionality of each subfactor is evaluated. <br>
+
+```{r}
+# Item labels from the 'omega()' function output
+F1_items <- omega4$model$lavaan[2]
+F1_items <- unlist(stringr::str_extract_all(F1_items, "q_[:digit:]{5}"))
+F2_items <- omega4$model$lavaan[3]
+F2_items <- unlist(stringr::str_extract_all(F2_items, "q_[:digit:]{5}"))
+F3_items <- omega4$model$lavaan[4]
+F3_items <- unlist(stringr::str_extract_all(F3_items, "q_[:digit:]{5}"))
+F4_items <- omega4$model$lavaan[5]
+F4_items <- unlist(stringr::str_extract_all(F4_items, "q_[:digit:]{5}"))
+
+# Unidimensionality of each subfactor
+
+# Factor 1
+cor_matrixF1<- cor(Rot2D_subset[,F1_items], use = "pairwise")
+cor_matrix_smoothedF1 <- cor.smooth(cor_matrixF1)
+omega_F1<- omega(cor_matrix_smoothedF1, plot = FALSE)
+round(omega_F1$omega_h,2)
+
+# Factor 2
+cor_matrixF2<- cor(Rot2D_subset[,F2_items], use = "pairwise")
+cor_matrix_smoothedF2 <- cor.smooth(cor_matrixF2)
+omega_F2<- omega(cor_matrix_smoothedF2, plot = FALSE)
+round(omega_F2$omega_h,2)
+
+# Factor 3
+cor_matrixF3<- cor(Rot2D_subset[,F3_items], use = "pairwise")
+cor_matrix_smoothedF3 <- cor.smooth(cor_matrixF3)
+omega_F3<- omega(cor_matrix_smoothedF3, plot = FALSE)
+round(omega_F3$omega_h,2)
+
+# Factor 4
+cor_matrixF4 <- cor(Rot2D_subset[,F4_items], use = "pairwise")
+cor_matrix_smoothedF4 <- cor.smooth(cor_matrixF4)
+omega_F4 <- omega(cor_matrix_smoothedF4, plot = FALSE)
+round(omega_F4$omega_h,2)
+
+```
+
+
+<br>
+
+Because each lower-order factor demonstrates sufficient unidimensionality, we obtain IRT scale scores for them below.  
+
+<br>
+
+```{r, message=FALSE, warning=FALSE, eval=FALSE}
+# First factor: rotate both square and answer option
+IRT_model_F1 <- mirt(Rot2D_subset[,F1_items], 1,
+                     itemtype = "2PL",
+                     constrain = NULL)
+
+# Second factor: rotate square 
+IRT_model_F2 <- mirt(Rot2D_subset[,F2_items], 1,
+                     itemtype = "2PL",
+                     constrain = NULL)
+
+# Third factor: no rotation
+IRT_model_F3 <- mirt(Rot2D_subset[,F3_items], 1,
+                     itemtype = "2PL",
+                     constrain = NULL)
+
+# Fourth factor: rotate answer option
+IRT_model_F4 <- mirt(Rot2D_subset[,F4_items], 1,
+                     itemtype = "2PL",
+                     constrain = NULL)
+
+
+save(IRT_model_F1, file = "IRT_model_F1.rdata")
+save(IRT_model_F2, file = "IRT_model_F2.rdata")
+save(IRT_model_F3, file = "IRT_model_F3.rdata")
+save(IRT_model_F4, file = "IRT_model_F4.rdata")
+
+```
+
+
+```{r}
+
+load("/Users/kmather3/Desktop/Projects/2D_Rotation/IRT_model_F1.rdata")
+load("/Users/kmather3/Desktop/Projects/2D_Rotation/IRT_model_F2.rdata")
+load("/Users/kmather3/Desktop/Projects/2D_Rotation/IRT_model_F3.rdata")
+load("/Users/kmather3/Desktop/Projects/2D_Rotation/IRT_model_F4.rdata")
+
+# First factor
+IRT_model_F1_parameters <- coef(IRT_model_F1, IRTpars=TRUE, simplify = TRUE)
+R2Dparameters_F1 <- IRT_model_F1_parameters$items[,1:2]
+
+# Second factor
+IRT_model_F2_parameters <- coef(IRT_model_F2, IRTpars=TRUE, simplify = TRUE)
+R2Dparameters_F2 <- IRT_model_F2_parameters$items[,1:2]
+
+# Third factor
+IRT_model_F3_parameters <- coef(IRT_model_F3, IRTpars=TRUE, simplify = TRUE)
+R2Dparameters_F3 <- IRT_model_F3_parameters$items[,1:2]
+
+# fourth factor
+IRT_model_F4_parameters <- coef(IRT_model_F4, IRTpars=TRUE, simplify = TRUE)
+R2Dparameters_F4 <- IRT_model_F4_parameters$items[,1:2]
+
+```
+
+
+<br>
+
+**Plotting the test information for each item type** <br>
+
+<br>
+
+
+```{r, echo=FALSE}
+
+# lower-order factors
+color_key=list(columns=2, 
+        text=list(lab=c("Rotate both",
+        "Rotate square",
+        "No rotation",
+        "Rotate answer option")), 
+        lines=list(lwd=4, lty=1:4, col=c("blue", "black","red","orange"))
+)
+
+p1 = plot(IRT_model_F1,type="info",key=color_key, xlim=c(-5,5),ylim=c(0,50),
+          main="Figure 15. Test Information For Lower-order Factors")
+p2 = update(plot(IRT_model_F2,type="info"),col="black", lty=2, 
+  xlim=c(-5,5),ylim=c(0,50))
+p3 = update(plot(IRT_model_F3,type="info"),col="red", lty=3,
+  xlim=c(-5,5),ylim=c(0,50))
+p4 = update(plot(IRT_model_F4,type="info"),col="orange", lty=4,
+  xlim=c(-5,5),ylim=c(0,50))
+
+p1+p2+p3+p4
+
+
+```
+
+The code below was used to get IRT scores for general 2D rotation ability and the four lower-order factors.  
+
+
+```{r, eval=FALSE}
+
+ICARdata$R2D_IRT_general = fscores(IRT_model_unidimensional2) 
+ICARdata$R2D_IRT_Rotate_Both = fscores(IRT_model_F1) 
+ICARdata$R2D_IRT_Rotate_Square = fscores(IRT_model_F2) 
+ICARdata$R2D_IRT_Rotate_None = fscores(IRT_model_F3) 
+ICARdata$R2D_IRT_Rotate_Answer = fscores(IRT_model_F4) 
+
+```
+
+```{r, echo=FALSE}
+
+R2D_cols <- c("Rotate stimuli and answer", "Rotate stimuli only", 
+              "No rotation", "Rotate answer only")
+
+R2D_abilities <- ICARdata %>%
+  dplyr::select(R2D_IRT_Rotate_Both:R2D_IRT_Rotate_Answer) %>%
+  setNames(R2D_cols)
+
+R2D_cor_test <- corr.test(R2D_abilities)
+R2D_CIs <- R2D_cor_test$ci
+```
+
+Correlations between the lower-order 2D rotation abilities (based on IRT scores) are shown below. Correlations between the lower-order abilities were weak to moderate. The strongest of these relationships was between the ability to rotate the answer option only and the ability to rotate both the stimuli and the answer option (*r* = .39). All other correlations were under .30. All 95% confidence intervals were +/- |.012|.  
+
+
+```{r}
+
+R2D_cols <- c("Rotate stimuli and answer", "Rotate stimuli only", 
+              "No rotation", "Rotate answer only")
+
+R2D_abilities <- ICARdata %>%
+  dplyr::select(R2D_IRT_Rotate_Both:R2D_IRT_Rotate_Answer) %>%
+  setNames(R2D_cols)
+
+```
+
+```{r, echo=FALSE}
+R2D_cors <- round(cor(R2D_abilities, use = "pairwise.complete.obs"),2)
+
+R2D_cors_plot <- ggcorrplot::ggcorrplot(R2D_cors, 
+        colors = c("#E46726", "white", "#6D9EC1"), type = "lower", outline.color = "black",
+        lab=TRUE) +
+        ggtitle("Figure 16. Correlations between lower-order abilities") +
+        theme(axis.title=element_text(size=5,face="bold")) 
+
+R2D_cors_plot
+
+```
+
+# Correlations between 2D rotation and other individual differences
+
+The following plots show the correlations between 2D rotation ability and a variety of personality traits and cognitive abilities. <br>
+
+<br>
+
+
+```{r, eval=FALSE, echo=FALSE}
+keys.list <- import(here("Data", "keyslist.rData"))
+
+keys.score <- list("RID", keys.list$SPI_135_27_5_Agree, 
+keys.list$SPI_135_27_5_Consc, keys.list$SPI_135_27_5_Extra, 
+keys.list$SPI_135_27_5_Neuro, keys.list$SPI_135_27_5_Open)
+
+names(keys.score) <- c("RID", "SPI_135_27_5_Agree", "SPI_135_27_5_Consc", 
+"SPI_135_27_5_Extra", "SPI_135_27_5_Neuro", "SPI_135_27_5_Open")
+I
+dataTrimmedSPIitems <- subset(ICARdata, select = c(RID,q_35:q_4296))
+scoringKey <- make.keys(dataTrimmedSPIitems, keys.score)
+dim(scoringKey)
+
+dataScored <- scoreItems(scoringKey, dataTrimmedSPIitems, 
+    totals=FALSE, impute="none", min=1, max=6)
+#Adding to dataset
+ICARdata <- cbind(ICARdata, dataScored$scores[,c(2:6)])
+
+save(ICARdata, file = "ICARdata_06March.rdata")
+```
+
+
+## Cogitive abilities
+
+
+```{r}
+ability_cols <- c("2D-rotation", "Figural analogies", "Propositional reasoning",
+                  "Letter-number series", "3D-rotation", "Matrix reasoning",
+                  "Verbal reasoning", "Compound remote associates")
+
+
+# t-scoring 2D rotation scores 
+ICARdata <- ICARdata %>%
+  mutate(R2D_IRT_general = ((R2D_IRT_general - mean(R2D_IRT_general, na.rm=TRUE))/
+  sd(R2D_IRT_general, na.rm=TRUE))*10+50)
+
+abilities <- ICARdata %>%
+  dplyr::select(R2D_IRT_general,
+  ICAR_FA_IRT_score:ICAR_CRA_IRT_score) %>%
+  setNames(ability_cols)
+
+```
+
+```{r, echo=FALSE}
+abilities_cor_test <- corr.test(abilities)
+abilities_CIs <- abilities_cor_test$ci
+
+#max(abs(abilities_CIs$r-abilities_CIs$lower))
+#max(abs(abilities_CIs$upper-abilities_CIs$r))
+
+
+ability_cors <- round(cor(abilities, use = "pairwise.complete.obs"),2)
+      
+ability_cors_plot <- ggcorrplot::ggcorrplot(ability_cors, 
+        colors = c("#E46726", "white", "#6D9EC1"), type = "lower", outline.color = "black",
+        lab=TRUE, lab_size = 3) +
+        ggtitle("Figure 17. Correlations with other cognitive abilities") +
+        theme(axis.title=element_text(size=5,face="bold")) 
+
+ability_cors_plot
+
+```
+
+(all 95% confidence intervals +/- |.003|) <br>
+
+## Temperament
+
+```{r, echo=FALSE}
+# Just the SPI vars and 2D rotation
+SPI_matrix <- ICARdata %>% 
+  select(R2D_IRT_general, contains("SPI_135"),
+  -c("SPI_135_27_5_Agree",
+    "SPI_135_27_5_Consc",
+    "SPI_135_27_5_Extra",
+    "SPI_135_27_5_Neuro",
+    "SPI_135_27_5_Open")) 
+
+# Getting column names
+
+SPI_cols <- SPI_matrix %>%
+  colnames() %>%
+  gsub("SPI_135_27_5_","", .)
+
+# Correlations
+SPI_cor_test <- psych::corr.test(SPI_matrix)
+R2D_SPIcors <- as.data.frame(SPI_cor_test$r[,1])
+
+rounded_cors <- SPI_cor_test$ci[c(1:27),] %>%
+  mutate(across(where(is.numeric), round, 3))
+
+# Plot
+#SPI_cor_test$ci[c(1:27),] 
+
+rounded_cors %>%
+  dplyr::mutate(Trait = rownames(.)) %>%
+  dplyr::relocate(Trait) %>%
+#  dplyr::mutate_if(is.numeric, ~round(.x, 2)) %>%
+  dplyr::mutate(Valence = as.factor(ifelse(r>0, 1, 0)),
+  trait = SPI_cols[-1]) %>%
+  mutate(trait = gsub("_score", "", trait)) %>%
+  ggplot(mapping = aes(x=reorder(trait, r), y=r, color=Valence)) +
+  geom_point(stat="identity", alpha=1, size=1.5) +
+  ylim(-0.15, 0.15) +
+  geom_errorbar(aes(x=trait, ymin=lower, ymax=upper), width=0.8, colour="black", alpha=0.9, size=.3) +
+  geom_text(aes(label=round(r,2)), hjust = -1, size = 4, alpha=2, colour = "black") +
+  labs(x = "Trait", title = "Figure 18. Correlation of 2D rotation with the 27 SPI traits") +
+  theme_minimal() +
+  scale_color_manual(values=c("dodgerblue", "orange")) +
+  geom_hline(yintercept = 0, size = 0.3, linetype = "dashed") +
+  coord_flip() +
+  theme(axis.text.y = element_text(color="black", 
+  size=10, angle=0),
+  axis.title.x = element_text(colour = "black", size = 10)) +
+  theme(legend.position = "none")
+
+# Checking confidence intervals...
+#SPI_cor_test$ci[1:27,] %>%
+#mutate(CI = lower-upper) %>%
+#arrange(abs(CI))
+
+```
+
+
+```{r, echo=FALSE}
+
+Big5_cols <- c("2D-rotation", "Agreeableness", "Conscientiousness",
+               "Extraversion", "Neuroticism", "Openness")
+
+Big5 <- ICARdata %>% 
+  dplyr::select(R2D_IRT_general,
+  SPI_135_27_5_Agree:SPI_135_27_5_Open) %>%
+  setNames(Big5_cols)
+
+Big5_cor_test <- corr.test(Big5)
+Big5_CIs <- Big5_cor_test$ci
+
+#Big5_CIs[1:5,c(2,4)]
+#max(abs(Big5_CIs$r-Big5_CIs$lower))
+#max(abs(Big5_CIs$upper-Big5_CIs$r))
+
+
+Big5_cols <- c("2D-rotation", "Agreeableness", "Conscientiousness",
+               "Extraversion", "Neuroticism", "Openness")
+
+Big5 <- ICARdata %>% 
+  dplyr::select(R2D_IRT_general,
+  SPI_135_27_5_Agree:SPI_135_27_5_Open) %>%
+  setNames(Big5_cols)
+
+Big5_cors <- round(cor(Big5, use = "pairwise.complete.obs"),2)
+
+
+big5_cors_plot <- ggcorrplot::ggcorrplot(Big5_cors, 
+        colors = c("#E46726", "white", "#6D9EC1"), type = "lower", outline.color = "black",
+        lab=TRUE) +
+        ggtitle("Figure 19. Correlations  with the big five traits") +
+        theme(axis.title=element_text(size=5,face="bold")) 
+
+big5_cors_plot
+
+```
+
+(All 95% Confidence Intervals +/- |.003|) <br>
+
+## O*NET job characteristics 
+
+Next, we examine the job characteristics most strongly associated with 2D rotation ability. Job characteristics are described on the ONET (https://www.onetonline.org/) website and can be organized into the six themes outlined by the ONET content model shown in the figure below. <br>
+
+![Figure 20. O*NET Content model](ONETcontentmodel.png){width=50%}
+
+First, we load the data with job characteristics and O*NET occupation codes to merge with SAPA data. We then use the BISCUIT statistical learning technique (Elleman et al., 2020) to identify the job characteristics most strongly associated with 2D rotation ability.   
+
+
+```{r}
+onet_data <- import(here("Data", "onet_char.csv"))
+types <- import(here("Data", "onet_varnames_char_types.csv")) 
+CrosswalkTable <- import(here("Data", "PrestigeRtgsCrosswalk28apr2021.csv")) # File with Occupational codes
+
+# Dropping "level" job characteristics (only "importance" ratings for the characteristics will be used)
+no_redund_data <- onet_data %>% dplyr::select(-ends_with("_Level"))
+# Drop some variables that had highly redundant pairs (r>.9) following discussion among raters
+varsToDrop <- types %>% filter(drop == "1")
+# This removes 7 additional items
+no_redund_data <- no_redund_data[, !names(no_redund_data) %in% varsToDrop$char_name]
+
+CrosswalkTable$`O*NET-SOC 2010 Code` <- str_replace_all(CrosswalkTable$`O*NET-SOC 2010 Code`, "[^[:alnum:]]", "")
+
+# Getting 2D rotation scores, grouping by occupation, and getting averages
+R2D_data <- ICARdata %>% 
+  select(R2D_IRT_general, occupation) %>%
+  group_by(occupation) %>%
+  dplyr::summarise(R2D_Score = mean(R2D_IRT_general, na.rm = TRUE),
+  n = length(!is.na(R2D_IRT_general))) %>%
+  dplyr::filter(n>=100) %>%
+  mutate('SAPA Job Title' = occupation)
+
+# Joining the O*NET and R2D data
+R2D_OPR <- inner_join(R2D_data, CrosswalkTable, by = "SAPA Job Title") %>%
+  rename("occ_code" = "O*NET-SOC 2010 Code") %>%
+  mutate(occ_code = as.numeric(occ_code)) %>%
+  select(occ_code, occupation, R2D_Score, n, "SAPA Job Title")
+
+R2D_OPR_onet <- left_join(no_redund_data, R2D_OPR, by = "occ_code")
+# remove duplicated rows
+R2D_OPR_onet <- R2D_OPR_onet %>% distinct()
+# Edit the _Imp labels 
+names(R2D_OPR_onet) = gsub("_Imp", "", names(R2D_OPR_onet))
+
+
+# running the bestScales function
+bs_all <- bestScales(R2D_OPR_onet[,c(2:240,242)], criteria = cs(R2D_Score), 
+           cut = .0, n.item = 100, n.iter = 10, folds = 10, 
+           overlap = FALSE, check = TRUE, impute = "none", digits = 2) 
+
+# Getting a data frame with the job characteristics
+bs_model_R2D <- as.data.frame(bs_all$items$R2D_Score)
+bs_model_R2D$mean.r <- round(bs_model_R2D$mean.r, 2)
+bs_model_R2D$sd.r <- round(bs_model_R2D$sd.r, 2)
+rownames(bs_model_R2D) <- gsub("_", " ", rownames(bs_model_R2D))
+colnames(bs_model_R2D) <- c("Frequency", "Mean Correlation", "Standard Deviation")
+
+```
+
+
+```{r, echo=FALSE}
+
+bs_model_R2D %>%
+  arrange(desc(`Mean Correlation`)) %>%
+  #slice(top_n(20), top_n(-20)) %>%
+  slice(1:20, (n()-19):n(), with_ties = FALSE) %>%
+  #slice(c(1:20), c(70:89))  %>%
+  knitr::kable(caption = 
+  "40 Job Characteristics Most Strongly associated with 2D Rotation") %>% 
+  kableExtra::pack_rows("20 strongest positive associations", 1, 20) %>%
+  kableExtra::pack_rows("20 strongest negative associations", 21, 40) %>%
+  kableExtra::kable_styling(latex_options = c("repeat_header", "HOLD_position"),
+  font_size = 7) %>%
+  kableExtra::kable_classic_2(full_width=F) 
+
+
+#job_char_model <- bs_model_R2D %>%
+ # arrange(desc(`Mean Correlation`)) %>%
+  #slice(top_n(20), top_n(-20)) %>%
+  #slice(1:20, (n()-19):n(), with_ties = FALSE)
+
+#write.csv(job_char_model, file = "job_char_model.csv")
+
+```
+
+
+## Occupations and Majors
+
+Below, we examine the highest scoring college majors and occupations on 2D rotation ability in comparison with 3D rotation ability. <br>
+
+<br>
+
+**Occupations**
+
+```{r}
+# Getting the highest scoring occupations
+occupations <- ICARdata %>% 
+  dplyr::group_by(occupation) %>%
+  dplyr::summarise(R2D_Score = mean(R2D_IRT_general, na.rm = TRUE),
+  R3D_Score = mean(ICAR_R3D_IRT_score, na.rm = TRUE), 
+  n = length(!is.na(R2D_IRT_general))) %>%
+  dplyr::mutate(R2D_Percentile = round(dplyr::percent_rank(R2D_Score),2),
+  R3D_Percentile = round(dplyr::percent_rank(R3D_Score),2) # Percentiles
+  )
+```
+
+\newpage
+
+```{r, echo=FALSE}
+# Occupations table 
+occupations %>% 
+  dplyr::filter(n>=500) %>% # Only occupations with at least 500 participants
+  dplyr::select(occupation, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile,
+  N = n) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(desc(R2D)) %>%
+  slice_head(n = 20) %>%
+  knitr::kable(longtable = T,
+  caption = "Highest scoring occupations on 2D rotation 
+  (in descending order of 2D rotation percentile)") %>% 
+  kableExtra::kable_styling(latex_options = c("repeat_header", "HOLD_position"),
+  font_size = 7) %>%
+  kableExtra::kable_classic(full_width=F) 
+
+
+#occ_table20 <- occupations %>% 
+ # dplyr::filter(n>=500) %>% # Only occupations with at least 500 participants
+  #dplyr::select(occupation, n, R2D_Percentile, R3D_Percentile) %>%
+  #dplyr::rename(R2D = R2D_Percentile,
+  #R3D = R3D_Percentile,
+  #N = n) %>%
+  #dplyr::mutate(Difference = R2D-R3D) %>%
+  #dplyr::arrange(desc(R2D)) %>%
+  #slice_head(n = 20)
+
+#write.csv(occ_table20, file = "occ_table20.csv")
+
+```
+
+
+```{r, echo=FALSE}
+# Occupations table 
+occupations %>% 
+  dplyr::filter(n>=500) %>% # Only occupations with at least 500 participants
+  dplyr::select(occupation, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile,
+  N = n) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(desc(R3D)) %>%
+  slice_head(n = 20) %>%
+  knitr::kable(longtable = T,
+  caption = "Highest scoring occupations on 3D rotation 
+  (in descending order of 3D rotation percentile)") %>% 
+  kableExtra::kable_styling(latex_options = c("repeat_header", "HOLD_position"),
+  font_size = 7) %>%
+  kableExtra::kable_classic(full_width=F) 
+
+
+#occ_table20_3D <- occupations %>% 
+ # dplyr::filter(n>=500) %>% # Only occupations with at least 500 participants
+  #dplyr::select(occupation, n, R2D_Percentile, R3D_Percentile) %>%
+  #dplyr::rename(R2D = R2D_Percentile,
+#  R3D = R3D_Percentile,
+ # N = n) %>%
+#  dplyr::mutate(Difference = R2D-R3D) %>%
+ # dplyr::arrange(desc(R3D)) %>%
+  #slice_head(n = 20)
+
+#write.csv(occ_table20_3D, file = "occ_table20_3D.csv")
+
+```
+
+
+```{r, echo=FALSE}
+# Occupations table 
+
+occupations %>% 
+  dplyr::filter(n>=500) %>% # Only occupations with at least 500 participants
+  dplyr::select(occupation, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile,
+  N = n) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(desc(Difference)) %>%
+  slice_head(n = 20) %>%
+  knitr::kable(longtable = T,
+  caption = "Occupations with the greatest difference in performance 
+  (in favor of 2D rotation)") %>% 
+  kableExtra::kable_styling(latex_options = c("repeat_header", "HOLD_position"),
+  font_size = 7) %>%
+  kableExtra::kable_classic(full_width=F) 
+
+occupations %>% 
+  dplyr::filter(n>=500) %>% # Only occupations with at least 500 participants
+  dplyr::select(occupation, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile,
+  N = n) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(Difference) %>%
+  slice_head(n = 20) %>%
+  knitr::kable(longtable = T,
+  caption = "Occupations with the greatest difference in performance 
+  (in favor of 3D rotation)") %>% 
+  kableExtra::kable_styling(latex_options = c("repeat_header", "HOLD_position"),
+  font_size = 7) %>%
+  kableExtra::kable_classic(full_width=F) 
+
+
+
+occ_difference_2D <- occupations %>% 
+  dplyr::filter(n>=500) %>% # Only occupations with at least 500 participants
+  dplyr::select(occupation, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile,
+  N = n) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(desc(Difference)) %>%
+  slice_head(n = 20) 
+
+#write.csv(occ_difference_2D, file = "occ_difference_2D.csv")
+
+
+occ_difference_3D <- occupations %>% 
+  dplyr::filter(n>=500) %>% # Only occupations with at least 500 participants
+  dplyr::select(occupation, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile,
+  N = n) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(Difference) %>%
+  slice_head(n = 20) 
+
+#write.csv(occ_difference_3D, file = "occ_difference_3D.csv")
+
+```
+
+**Majors**
+
+```{r}
+majors <- ICARdata %>% 
+  dplyr::group_by(major) %>%
+  dplyr::summarise(R2D_Score = mean(R2D_IRT_general, na.rm = TRUE),
+  R3D_Score = mean(ICAR_R3D_IRT_score, na.rm = TRUE), 
+  n = length(!is.na(R2D_IRT_general))) %>%
+  dplyr::mutate(R2D_Percentile = round(dplyr::percent_rank(R2D_Score),2),
+  R3D_Percentile = round(dplyr::percent_rank(R3D_Score),2) # Percentiles
+  )
+```
+
+```{r, echo=FALSE}
+majors %>% 
+  dplyr::filter(n>=500) %>% # Only majors with at least 500 participants
+  dplyr::select(major, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(desc(R2D)) %>%
+  slice_head(n = 20) %>%
+  knitr::kable(longtable = T,
+  caption = "Highest scoring majors on 2D rotation 
+  (in descending order of 2D rotation percentile)") %>% 
+  kableExtra::kable_styling(latex_options = c("repeat_header", "HOLD_position"),
+  font_size =8) %>%
+  kableExtra::kable_classic(full_width=F) 
+
+
+majors_highest2D <- majors %>% 
+  dplyr::filter(n>=500) %>% # Only majors with at least 500 participants
+  dplyr::select(major, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(desc(R2D)) %>%
+  slice_head(n = 20) 
+
+#write.csv(majors_highest2D, file = "majors_highest2D.csv")
+
+```
+
+
+```{r, echo=FALSE}
+majors %>% 
+  dplyr::filter(n>=500) %>% # Only majors with at least 500 participants
+  dplyr::select(major, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(desc(R3D)) %>%
+  slice_head(n = 20) %>%
+  knitr::kable(longtable = T,
+  caption = "Highest scoring majors on 3D rotation 
+  (in descending order of 3D rotation percentile)") %>% 
+  kableExtra::kable_styling(latex_options = c("repeat_header", "HOLD_position"),
+  font_size =8) %>%
+  kableExtra::kable_classic(full_width=F) 
+
+
+majors_highest3D <- majors %>% 
+  dplyr::filter(n>=500) %>% # Only majors with at least 500 participants
+  dplyr::select(major, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(desc(R3D)) %>%
+  slice_head(n = 20)
+
+#write.csv(majors_highest3D, file = "majors_highest3D.csv")
+
+```
+
+
+```{r, echo=FALSE}
+majors %>% 
+  dplyr::filter(n>=500) %>% # Only majors with at least 500 participants
+  dplyr::select(major, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(desc(Difference)) %>%
+  slice_head(n = 20) %>%
+  knitr::kable(longtable = T,
+  caption = "Majors with the greatest discrepancy in performance 
+  (in favor of 2D rotation)") %>% 
+  kableExtra::kable_styling(latex_options = c("repeat_header", "HOLD_position"),
+  font_size =8) %>%
+  kableExtra::kable_classic(full_width=F) 
+```
+
+
+```{r, echo=FALSE}
+majors %>% 
+  dplyr::filter(n>=500) %>% # Only majors with at least 500 participants
+  dplyr::select(major, n, R2D_Percentile, R3D_Percentile) %>%
+  dplyr::rename(R2D = R2D_Percentile,
+  R3D = R3D_Percentile) %>%
+  dplyr::mutate(Difference = R2D-R3D) %>%
+  dplyr::arrange(Difference) %>%
+  slice_head(n = 20) %>%
+  knitr::kable(longtable = T,
+  caption = "Majors with the greatest discrepancy in performance 
+  (in favor of 3D rotation)") %>% 
+  kableExtra::kable_styling(latex_options = c("repeat_header", "HOLD_position"),
+  font_size =8) %>%
+  kableExtra::kable_classic(full_width=F) 
+```
+
